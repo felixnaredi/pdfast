@@ -1,0 +1,64 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.33.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: e49a330e92bbdad82436e3acd6478ee558173d3a31ed69c2a88ebf32ac877fce
+
+name:           pdfast
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/felixnaredi/pdfast#readme>
+homepage:       https://github.com/felixnaredi/pdfast#readme
+bug-reports:    https://github.com/felixnaredi/pdfast/issues
+author:         Felix Naredi
+maintainer:     felixnaredi@gmail.com
+copyright:      Felix Naredi
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/felixnaredi/pdfast
+
+library
+  exposed-modules:
+      Data.PDF.AST
+      Data.PDF.Object
+  other-modules:
+      Paths_pdfast
+  hs-source-dirs:
+      src
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , hspec
+    , mtl
+    , parsec
+  default-language: Haskell2010
+
+test-suite pdfast-unit-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      ParserSpec
+      Paths_pdfast
+  hs-source-dirs:
+      test/unit
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , hspec
+    , mtl
+    , parsec
+    , pdfast
+  default-language: Haskell2010
