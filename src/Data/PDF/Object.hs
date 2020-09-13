@@ -16,35 +16,38 @@ import           Text.Parsec
 
 type NameValue = [Word8]
 
-data Object = Null
-            | Boolean Bool
-            | NumericInt Int
-            | NumericReal Double
-            | LiteralStr ByteString
-            | HexadecStr [Word8]
-            | Name NameValue
-            | Array [Object]
-            | Dictionary (Map NameValue Object)
-            | NumberTree (Map Int Object)
-            | Stream
-            | Indirect
+data Object n = Null
+               | Boolean Bool
+               | NumericInt Int
+               | NumericReal Double
+               | LiteralStr ByteString
+               | HexadecStr [Word8]
+               | Name n
+               | Array [Object n]
+               | Dictionary (Map n (Object n))
+               | NumberTree (Map Int (Object n))
+               | Stream
+               | Indirect
   deriving (Eq, Show)
 
-type ObjectParser u m = ParsecT ByteString u m Object
+type ObjectParser n u m = ParsecT ByteString u m (Object n)
 
-objectP :: Monad m => ObjectParser u m
-objectP = nullP <|> booleanP <|> numericP
+-- | Parser for PDF objects.
+objectP :: Monad m => ObjectParser NameValue u m
+objectP = nullP <|> booleanP <|> numericP <|> nameP <|> hexadecStrP
 
-nullP :: Monad m => ObjectParser u m
+-- | Parser for null object.
+nullP :: Monad m => ObjectParser n u m
 nullP = string "null" >> return Null
 
-booleanP :: Monad m => ObjectParser u m
+-- | Parser for boolean objects.
+booleanP :: Monad m => ObjectParser n u m
 booleanP =
   (string "true" >> return (Boolean True))
     <|> (string "false" >> return (Boolean False))
 
--- * Parses a bytestring and returns either a NumericInt or NumericReal.
-numericP :: Monad m => ObjectParser u m
+-- | Parser for numerical objects.
+numericP :: Monad m => ObjectParser n u m
 numericP = (char '-' >> negate' <$> num) <|> (char '+' >> num) <|> num
  where
   negate' (NumericInt  x) = NumericInt (negate x)
@@ -61,4 +64,18 @@ numericP = (char '-' >> negate' <$> num) <|> (char '+' >> num) <|> num
   fracs s = value (/ 10) (reverse s) / 10
   value f = foldl (\acc x -> f acc + fromIntegral x) 0 . map digitToInt
 
+-- | Parser for hexadecimal strings objects.
+hexadecStrP :: Monad m => ObjectParser n u m
+hexadecStrP = between (char '<') (char '>') (HexadecStr <$> many hexByte)
 
+-- | Consumes two hex digits and returns it as a byte.
+hexByte :: Monad m => ParsecT ByteString u m Word8
+hexByte = hexi >>= \n -> hexi >>= return . fromIntegral . (n * 16 +)
+  where hexi = digitToInt <$> hexDigit
+
+-- | Parser for name objects with internal atomic value represented by bytes.
+nameP :: Monad m => ObjectParser [Word8] u m
+nameP = char '/' >> Name <$> many1 (numsign <|> regular)
+ where
+  numsign = char '#' >> hexByte
+  regular = fromIntegral . fromEnum <$> oneOf ['!' .. '~']
