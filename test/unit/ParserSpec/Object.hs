@@ -21,12 +21,14 @@ objectParseSpecs = do
     parseBooleanObjects
     parseNumericInts
     parseNumericReals
+    parseLiteralStrings
     parseHexadecStrings
     parseNames
   describe "Parses malformed strings that could be objects" $ do
     malformed "True"
     malformed "fals"
     malformedNumbers
+    malformedLiteralStrings
     malformedHexadecStrings
     malformedNames
 
@@ -61,28 +63,51 @@ parseNumericReals = do
   wellformed (NumericReal (-0.002)) "-.002"
   wellformed (NumericReal 0.0)      "0.0"
 
+parseLiteralStrings :: Spec
+parseLiteralStrings = mapM_
+  (\(s, res) -> wellformed (LiteralStr res) s)
+  [ ("(This is a string)", "This is a string")
+  , ( "(Strings may contain newlines\nand such.)"
+    , "Strings may contain newlines\nand such."
+    )
+  , ( "(Strings may contain balanced parentheses ())"
+    , "Strings may contain balanced parentheses ()"
+    )
+  , ( "(special characters (*!&}^% and so on).)"
+    , "special characters (*!&}^% and so on)."
+    )
+  , ("()"                     , "")
+  , ("( w h i t e\tspace\n)"  , " w h i t e\tspace\n")
+  , ("(\\n\\r\\t\\b\\f\\(\\))", "\n\r\t\b\f()")
+  , ("(\\9NIN\\E)"            , "NIN")
+  , ("(\\053)"                , "+")
+  , ("(\\53)"                 , "+")
+  , ("(\\053123)"             , "+123")
+  , ("(\\0ZERO)"              , "\0ZERO")
+  ]
+
 parseHexadecStrings :: Spec
 parseHexadecStrings = mapM_
-  (\(x, s) -> wellformed (HexadecStr $ B.unpack x) s)
-  [ ("Hello World!"       , "<48656C6C6F20576F726C6421>")
-  , ("#\nyo\rLO \tSw!4\\g", "<230A796F0D4C4F2009537721345C67>")
-  , (""                   , "<>")
-  , ("mIxEdLoWeRaNdUpPeR", "<6D497845644c6F576552614e645570506552>")
+  (\(s, res) -> wellformed (HexadecStr $ B.unpack res) s)
+  [ ("<48656C6C6F20576F726C6421>"      , "Hello World!")
+  , ("<230A796F0D4C4F2009537721345C67>", "#\nyo\rLO \tSw!4\\g")
+  , ("<>"                              , "")
+  , ("<6D497845644c6F576552614e645570506552>", "mIxEdLoWeRaNdUpPeR")
   ]
 
 parseNames :: Spec
 parseNames = mapM_
-  (\(v, s) -> wellformed (Name $ B.unpack v) s)
-  [ ("Name1"              , "/Name1")
-  , ("ASomewhatLongerName", "/ASomewhatLongerName")
-  , ("A;Name_With-Various***Characters?", "/A;Name_With-Various***Characters?")
-  , ("1.2"                , "/1.2")
-  , ("$$"                 , "/$$")
-  , ("@pattern"           , "/@pattern")
-  , ("Lime Green"         , "/Lime#20Green")
-  , ("paired()parentheses", "/paired#28#29parentheses")
-  , ("The_Key_of_F#_Minor", "/The_Key_of_F#23_Minor")
-  , ("AB"                 , "/A#42")
+  (\(s, res) -> wellformed (Name $ B.unpack res) s)
+  [ ("/Name1"                  , "Name1")
+  , ("/ASomewhatLongerName"    , "ASomewhatLongerName")
+  , ("/A;Name_With-Various***Characters?", "A;Name_With-Various***Characters?")
+  , ("/1.2"                    , "1.2")
+  , ("/$$"                     , "$$")
+  , ("/@pattern"               , "@pattern")
+  , ("/Lime#20Green"           , "Lime Green")
+  , ("/paired#28#29parentheses", "paired()parentheses")
+  , ("/The_Key_of_F#23_Minor"  , "The_Key_of_F#_Minor")
+  , ("/A#42"                   , "AB")
   ]
 
 malformed :: ByteString -> Spec
@@ -98,6 +123,14 @@ malformedNumbers = do
   malformed "1.2.3"
   malformed "1..23"
   malformed "--1"
+
+malformedLiteralStrings :: Spec
+malformedLiteralStrings = do
+  malformed "(missing ending parentheses"
+  malformed "(unbalanced (literal)"
+  malformed "(UnbAlAncEd (lItErAL) (* (* )"
+  malformed "(this ( dummy -->\\) )"
+  malformed "(Dummy Ending \\)"
 
 malformedHexadecStrings :: Spec
 malformedHexadecStrings = do
