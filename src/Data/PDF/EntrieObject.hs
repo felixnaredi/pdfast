@@ -2,6 +2,7 @@
 
 module Data.PDF.EntrieObject
   ( EntrieObj(..)
+  , EntrieNameValue
   , entrieObj
   )
 where
@@ -10,7 +11,6 @@ import           Data.ByteString                ( ByteString )
 import           Data.Char
 import           Data.Word                      ( Word8 )
 import qualified Data.ByteString               as B
-import           Data.Map.Strict                ( Map )
 import           Text.Parsec
 
 -- | EntrieObj is an object that is a valid entrie to a dictionary.
@@ -23,19 +23,30 @@ data EntrieObj n = Null
                  | Name n
                  | IndirectRef Int Int
                  | Array [EntrieObj n]
-                 | Dictionary (Map n (EntrieObj n))
-                 | NumberTree (Map Int (EntrieObj n))
+                 | Dictionary [(n, EntrieObj n)]
   deriving (Eq, Show)
 
 type EntrieObjParser n u m = ParsecT ByteString u m (EntrieObj n)
+type EntrieNameValue = [Word8]
+
+-- -----------------------------------------------------------------------------
+-- Parsing
+-- -----------------------------------------------------------------------------
 
 -- | Parser for PDF objects.
-entrieObj :: Monad m => EntrieObjParser [Word8] u m
-entrieObj = nullObj <|> boolean <|> name <|> numeric <|> hexadecStr <|> literal
+entrieObj :: Monad m => EntrieObjParser EntrieNameValue u m
+entrieObj =
+  nullParser
+    <|> boolean
+    <|> name
+    <|> numeric
+    <|> hexadecStr
+    <|> literal
+    <|> array
 
 -- | Parser for null object.
-nullObj :: Monad m => EntrieObjParser n u m
-nullObj = string "null" >> return Null
+nullParser :: Monad m => EntrieObjParser n u m
+nullParser = string "null" >> return Null
 
 -- | Parser for boolean objects.
 boolean :: Monad m => EntrieObjParser n u m
@@ -109,9 +120,26 @@ hexByte = hexi >>= \n -> fromIntegral . (n * 16 +) <$> hexi
   where hexi = digitToInt <$> hexDigit
 
 -- | Parser for name objects with internal atomic value represented by bytes.
+--
+-- NOTE: It is not clear from the standards but looking at some PDF files it
+-- seems as '/' and '(' and '[' can be used as delimeters for names. These 
+-- examples is from an actual document:
+-- >
+-- > <</Type/Pages/Count 2/Kids[ 3 0 R 18 0 R] >>
+-- >
+--
+-- This was a key value pair inside a dictionary.
+-- >
+-- > /Lang(en-GB) 
+-- >
 name :: Monad m => EntrieObjParser [Word8] u m
 name = char '/' >> Name <$> many (numsign <|> regular)
  where
   numsign = char '#' >> hexByte
-  regular = fromIntegral . fromEnum <$> oneOf ['!' .. '~']
+  regular = fromIntegral . fromEnum <$> satisfy
+    (\c -> elem c ['!' .. '~'] && c `notElem` "/([")
 
+array :: Monad m => EntrieObjParser EntrieNameValue u m
+array = Array <$> between (char '[' >> spaces)
+                          (spaces >> char ']')
+                          (many (entrieObj <* spaces))

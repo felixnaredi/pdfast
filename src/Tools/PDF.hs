@@ -1,6 +1,8 @@
 module Tools.PDF where
 
-import Data.Char ( intToDigit, toUpper )
+import           Data.Char                      ( intToDigit
+                                                , toUpper
+                                                )
 
 -- | Shows a byte as two hexadecimal digits.
 --

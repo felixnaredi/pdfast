@@ -8,11 +8,17 @@ where
 import           Control.Monad.IO.Class         ( liftIO )
 import           Data.ByteString                ( ByteString )
 import qualified Data.ByteString               as B
+import           Data.Char
 import           Data.Either                    ( isLeft )
 import           Data.PDF.EntrieObject
 import           Data.Word                      ( Word8 )
 import           Test.Hspec
 import           Text.Parsec                    ( parse )
+import           Tools.PDF
+
+-- -----------------------------------------------------------------------------
+-- Test suits
+-- -----------------------------------------------------------------------------
 
 entrieObjParseSpecs :: Spec
 entrieObjParseSpecs = do
@@ -24,6 +30,7 @@ entrieObjParseSpecs = do
     parseLiteralStrings
     parseHexadecStrings
     parseNames
+    parseArrays
   describe "Parses malformed strings that could be objects" $ do
     malformed "True"
     malformed "fals"
@@ -31,12 +38,6 @@ entrieObjParseSpecs = do
     malformedLiteralStrings
     malformedHexadecStrings
     malformedNames
-
-wellformed :: EntrieObj [Word8] -> ByteString -> Spec
-wellformed obj s =
-  it ("Parsing " ++ show s ++ " to an object") $ case parse entrieObj "" s of
-    Right res -> res `shouldBe` obj
-    Left  err -> liftIO $ print err >> undefined
 
 parseNullObjects :: Spec
 parseNullObjects = wellformed Null "null"
@@ -97,7 +98,7 @@ parseHexadecStrings = mapM_
 
 parseNames :: Spec
 parseNames = mapM_
-  (\(s, res) -> wellformed (Name $ B.unpack res) s)
+  (\(s, res) -> wellformed (nameObj res) s)
   [ ("/Name1"                  , "Name1")
   , ("/ASomewhatLongerName"    , "ASomewhatLongerName")
   , ("/"                       , "")
@@ -105,17 +106,34 @@ parseNames = mapM_
   , ("/1.2"                    , "1.2")
   , ("/$$"                     , "$$")
   , ("/@pattern"               , "@pattern")
+  , ("/null"                   , "null")
   , ("/Lime#20Green"           , "Lime Green")
   , ("/paired#28#29parentheses", "paired()parentheses")
   , ("/The_Key_of_F#23_Minor"  , "The_Key_of_F#_Minor")
   , ("/A#42"                   , "AB")
+  , ("/Type/Pages"             , "Type")
+  , ("/Lang(en-GB)"            , "Lang")
+  , ("/Kids[ 3 0 R 18 0 R]"    , "Kids")
   ]
 
-malformed :: ByteString -> Spec
-malformed s =
-  it ("Parsing " ++ show s ++ " should fail")
-    $          isLeft (parse entrieObj "" s)
-    `shouldBe` True
+parseArrays :: Spec
+parseArrays = mapM_
+  (\(s, res) -> wellformed (Array res) s)
+  [ ("[]"            , [])
+  , ("[ 1 2 /hello ]", [numiObj 1, numiObj 2, nameObj "hello"])
+  , ("[/A/2//C3 ]", [nameObj "A", nameObj "2", nameObj "", nameObj "C3"])
+  , ( "[/Lang(en-GB)[123 45.6]7]"
+    , [ nameObj "Lang"
+      , litStrObj "en-GB"
+      , Array [numiObj 123, numrObj 45.6]
+      , numiObj 7
+      ]
+    )
+  , ( "[\n\t true\n /space\r\n-.0 \r null\n\n]"
+    , [true, nameObj "space", numrObj (-0.0), Null]
+    )
+  ]
+
 
 malformedNumbers :: Spec
 malformedNumbers = do
@@ -144,3 +162,53 @@ malformedNames = do
   malformed "/f#ail"
   malformed "/bad-ending#"
   malformed "/BAD_END#6"
+
+-- -----------------------------------------------------------------------------
+-- Test makers
+-- -----------------------------------------------------------------------------
+
+-- | Test succeeds if the result from the parsed input is equal to the given 
+-- object.
+wellformed :: EntrieObj EntrieNameValue -> ByteString -> Spec
+wellformed obj s =
+  it ("Parsing " ++ show s ++ " to an object") $ case parse entrieObj "" s of
+    Right res -> res `shouldBe` obj
+    Left  err -> liftIO $ print err >> undefined
+
+-- | Test succeeds if the parsing of the input results in an error.
+malformed :: ByteString -> Spec
+malformed s =
+  it ("Parsing " ++ show s ++ " should fail")
+    $          isLeft (parse entrieObj "" s)
+    `shouldBe` True
+
+-- -----------------------------------------------------------------------------
+-- Object makers
+-- -----------------------------------------------------------------------------
+
+true :: EntrieObj n
+true = Boolean True
+
+false :: EntrieObj n
+false = Boolean False
+
+numiObj :: Integral a => a -> EntrieObj n
+numiObj = NumericInt . fromIntegral
+
+numrObj :: Double -> EntrieObj n
+numrObj = NumericReal
+
+nameObj :: ByteString -> EntrieObj EntrieNameValue
+nameObj = Name . B.unpack
+
+unpackStr :: String -> [Word8]
+unpackStr = map (fromIntegral . ord)
+
+packStr :: String -> ByteString
+packStr = B.pack . unpackStr
+
+litStrObj :: String -> EntrieObj n
+litStrObj = LiteralStr . packStr
+
+hexaStrObj :: String -> EntrieObj n
+hexaStrObj = HexadecStr . unpackStr . strToHexadecStr
