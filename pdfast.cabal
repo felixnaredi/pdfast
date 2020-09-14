@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0fc36eaa4fa12b85ec1efc926b43fcef185a4b8d7fa2eafee615a7c4a3b5680e
+-- hash: 79cedde28443785a213899571e5cbb6806eacc916fcbe9e6d6fb868de3771231
 
 name:           pdfast
 version:        0.1.0.0
@@ -28,7 +28,7 @@ source-repository head
 library
   exposed-modules:
       Data.PDF.AST
-      Data.PDF.Object
+      Data.PDF.EntrieObject
       Tools.PDF
   other-modules:
       Paths_pdfast
@@ -48,7 +48,7 @@ test-suite pdfast-unit-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      ParserSpec.Object
+      ParserSpec.EntrieObject
       Paths_pdfast
   hs-source-dirs:
       test/unit

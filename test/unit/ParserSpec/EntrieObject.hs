@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module ParserSpec.Object
-  ( objectParseSpecs
+module ParserSpec.EntrieObject
+  ( entrieObjParseSpecs
   )
 where
 
@@ -9,13 +9,13 @@ import           Control.Monad.IO.Class         ( liftIO )
 import           Data.ByteString                ( ByteString )
 import qualified Data.ByteString               as B
 import           Data.Either                    ( isLeft )
-import           Data.PDF.Object
-
+import           Data.PDF.EntrieObject
+import           Data.Word                      ( Word8 )
 import           Test.Hspec
 import           Text.Parsec                    ( parse )
 
-objectParseSpecs :: Spec
-objectParseSpecs = do
+entrieObjParseSpecs :: Spec
+entrieObjParseSpecs = do
   describe "Parses valid strings to simple objects" $ do
     parseNullObjects
     parseBooleanObjects
@@ -32,9 +32,9 @@ objectParseSpecs = do
     malformedHexadecStrings
     malformedNames
 
-wellformed :: Object NameValue -> ByteString -> Spec
+wellformed :: EntrieObj [Word8] -> ByteString -> Spec
 wellformed obj s =
-  it ("Parsing " ++ show s ++ " to an object") $ case parse objectP "" s of
+  it ("Parsing " ++ show s ++ " to an object") $ case parse entrieObj "" s of
     Right res -> res `shouldBe` obj
     Left  err -> liftIO $ print err >> undefined
 
@@ -100,6 +100,7 @@ parseNames = mapM_
   (\(s, res) -> wellformed (Name $ B.unpack res) s)
   [ ("/Name1"                  , "Name1")
   , ("/ASomewhatLongerName"    , "ASomewhatLongerName")
+  , ("/"                       , "")
   , ("/A;Name_With-Various***Characters?", "A;Name_With-Various***Characters?")
   , ("/1.2"                    , "1.2")
   , ("/$$"                     , "$$")
@@ -113,7 +114,7 @@ parseNames = mapM_
 malformed :: ByteString -> Spec
 malformed s =
   it ("Parsing " ++ show s ++ " should fail")
-    $          isLeft (parse objectP "" s)
+    $          isLeft (parse entrieObj "" s)
     `shouldBe` True
 
 malformedNumbers :: Spec
@@ -140,7 +141,6 @@ malformedHexadecStrings = do
 
 malformedNames :: Spec
 malformedNames = do
-  malformed "/"
   malformed "/f#ail"
   malformed "/bad-ending#"
   malformed "/BAD_END#6"

@@ -9,7 +9,7 @@ import           Control.Monad.State
 import           Data.Word                      ( Word8 )
 import           Data.Map.Strict                ( Map )
 import           Data.ByteString                ( ByteString )
-import           Data.PDF.Object
+import           Data.PDF.EntrieObject
 
 type NameID = Int
 
