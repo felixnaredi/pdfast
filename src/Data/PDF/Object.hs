@@ -7,13 +7,12 @@ module Data.PDF.Object
   )
 where
 
-import           Control.Monad.State
 import           Data.ByteString                ( ByteString )
 import           Data.Char
 import           Data.Word                      ( Word8 )
 import qualified Data.ByteString               as B
 import           Data.Map.Strict                ( Map )
-import           Text.Parsec             hiding ( State )
+import           Text.Parsec
 
 type NameValue = [Word8]
 
@@ -36,7 +35,7 @@ type ObjectParser n u m = ParsecT ByteString u m (Object n)
 -- | Parser for PDF objects.
 objectP :: Monad m => ObjectParser NameValue u m
 objectP =
-  hexadecStrP <|> literalP <|> nameP <|> numericP <|> booleanP <|> nullP
+  nullP <|> booleanP <|> nameP <|> numericP <|> hexadecStrP <|> literalP
 
 -- | Parser for null object.
 nullP :: Monad m => ObjectParser n u m
@@ -72,32 +71,37 @@ byte = fromIntegral . ord
 readOctal :: String -> Word8
 readOctal = fromIntegral . foldl (\x c -> x * 8 + digitToInt c) 0
 
+consA :: Applicative f => a -> f [a] -> f [a]
+consA x = (<$>) (x :)
+
+count' :: Monad m => Int -> ParsecT s u m a -> ParsecT s u m [a]
+count' 0 _ = return []
+count' n p = (p >>= flip consA (count' (n - 1) p)) <|> return []
+
 -- | Parser for literal string objects.
 literalP :: Monad m => ObjectParser n u m
-literalP = char '(' >> LiteralStr . B.pack <$> literal 1
+literalP = LiteralStr <$> literal'
  where
-  literal :: Monad m => Int -> ParsecT ByteString u m [Word8]
-  literal n = revSolidus <|> leftPar <|> rightPar <|> regular
-   where
-    leftPar = char '(' >> (40 :) <$> literal (n + 1)
-    rightPar =
-      char ')' >> if n - 1 == 0 then return [] else (41 :) <$> literal (n - 1)
-    regular    = anyToken >>= \c -> (byte c :) <$> literal n
+  literal' = between (char '(') (char ')') next
+  literal  = B.cons 40 <$> (B.append <$> literal' <*> (B.cons 41 <$> next))
 
-    revSolidus = char '\\' >> (escape <|> octal <|> (anyToken >> literal n))
-    escape =
-      escape' 'n' 10
-        <|> escape' 'r'  13
-        <|> escape' 't'  9
-        <|> escape' 'b'  8
-        <|> escape' 'f'  12
-        <|> escape' '('  40
-        <|> escape' ')'  41
-        <|> escape' '\\' 92
-    escape' c b = char c >> (b :) <$> literal n
-    octal = do
-      cs <- choice $ map (try . flip count octDigit) [3, 2, 1]
-      (readOctal cs :) <$> literal n
+  next     = escape <|> literal <|> regular <|> return B.empty
+
+  escape   = char '\\' >> (seq <|> octal <|> (anyToken >> next))
+  seq      = foldl (<|>) parserZero $ map
+    (\(c, b) -> char c >> B.cons b <$> next)
+    [ ('n' , 10)
+    , ('r' , 13)
+    , ('t' , 9)
+    , ('b' , 8)
+    , ('f' , 12)
+    , ('(' , 40)
+    , (')' , 41)
+    , ('\\', 92)
+    ]
+  octal   = B.cons . readOctal <$> digits <*> next
+  digits  = octDigit >>= flip consA (count' 2 octDigit)
+  regular = B.cons . byte <$> satisfy (')' /=) <*> next
 
 -- | Parser for hexadecimal string objects.
 hexadecStrP :: Monad m => ObjectParser n u m
