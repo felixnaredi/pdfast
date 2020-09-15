@@ -6,6 +6,7 @@ module ParserSpec.EntrieObject
 where
 
 import           Control.Monad.IO.Class         ( liftIO )
+import           Data.Bifunctor                 ( first )
 import           Data.ByteString                ( ByteString )
 import qualified Data.ByteString               as B
 import           Data.Char
@@ -30,7 +31,9 @@ entrieObjParseSpecs = do
     parseLiteralStrings
     parseHexadecStrings
     parseNames
+    parseIndirectRefs
     parseArrays
+    parseDictionaries
   describe "Parses malformed strings that could be objects" $ do
     malformed "True"
     malformed "fals"
@@ -38,6 +41,9 @@ entrieObjParseSpecs = do
     malformedLiteralStrings
     malformedHexadecStrings
     malformedNames
+    malformedIndirectRefs
+    malformedArrays
+    malformedDictionaries
 
 parseNullObjects :: Spec
 parseNullObjects = wellformed Null "null"
@@ -116,6 +122,9 @@ parseNames = mapM_
   , ("/Kids[ 3 0 R 18 0 R]"    , "Kids")
   ]
 
+parseIndirectRefs :: Spec
+parseIndirectRefs = wellformed (irefObj 12 0) "12 0 R"
+
 parseArrays :: Spec
 parseArrays = mapM_
   (\(s, res) -> wellformed (Array res) s)
@@ -132,8 +141,30 @@ parseArrays = mapM_
   , ( "[\n\t true\n /space\r\n-.0 \r null\n\n]"
     , [true, nameObj "space", numrObj (-0.0), Null]
     )
+  , ("[ 1 2 876 0 R 3\n]", [numiObj 1, numiObj 2, irefObj 876 0, numiObj 3])
   ]
 
+parseDictionaries :: Spec
+parseDictionaries = mapM_
+  (\(s, res) -> wellformed (dictObj res) s)
+  [ ("<< /HELLO (WORLD!) >>"  , [("HELLO", litStrObj "WORLD!")])
+  , ("<<\n  /num1\n2.3 \n\t>>", [("num1", numrObj 2.3)])
+  , ( "<</yo/lo/mah(dude)/its[/cool ]>>"
+    , [ ("yo" , nameObj "lo")
+      , ("mah", litStrObj "dude")
+      , ("its", Array [nameObj "cool"])
+      ]
+    )
+  , ( "<</Type/Pages/Count 2/Kids[ 3 0 R 18 0 R] >>"
+    , [ ("Type" , nameObj "Pages")
+      , ("Count", numiObj 2)
+      , ("Kids" , Array [irefObj 3 0, irefObj 18 0])
+      ]
+    )
+  , ( "<</Nested <</Dict (ionary) >> >>"
+    , [("Nested", dictObj [("Dict", litStrObj "ionary")])]
+    )
+  ]
 
 malformedNumbers :: Spec
 malformedNumbers = do
@@ -162,6 +193,25 @@ malformedNames = do
   malformed "/f#ail"
   malformed "/bad-ending#"
   malformed "/BAD_END#6"
+
+malformedIndirectRefs :: Spec
+malformedIndirectRefs = do
+  malformed "[ 1 2.3 R ]"
+  malformed "[ 4 /5 R ]"
+  malformed "[ 78 -9 R ]"
+  malformed "[ 10 11 r ]"
+  malformed "[ 10\n11 R ]"
+
+malformedArrays :: Spec
+malformedArrays = do
+  malformed "[1 2 /missing (end) 3 "
+  malformed "[ 1 [(baked in this ] str ) ]"
+  malformed "[/unbalanced [ 1 ]"
+
+malformedDictionaries :: Spec
+malformedDictionaries = do
+  malformed "<< (str) /name >>"
+  malformed "<< /endless 1 /wait-for-it (now!)\n"
 
 -- -----------------------------------------------------------------------------
 -- Test makers
@@ -201,6 +251,9 @@ numrObj = NumericReal
 nameObj :: ByteString -> EntrieObj EntrieNameValue
 nameObj = Name . B.unpack
 
+irefObj :: Int -> Int -> EntrieObj EntrieNameValue
+irefObj = IndirectRef
+
 unpackStr :: String -> [Word8]
 unpackStr = map (fromIntegral . ord)
 
@@ -212,3 +265,7 @@ litStrObj = LiteralStr . packStr
 
 hexaStrObj :: String -> EntrieObj n
 hexaStrObj = HexadecStr . unpackStr . strToHexadecStr
+
+dictObj
+  :: [(ByteString, EntrieObj EntrieNameValue)] -> EntrieObj EntrieNameValue
+dictObj = Dictionary . map (first B.unpack)
